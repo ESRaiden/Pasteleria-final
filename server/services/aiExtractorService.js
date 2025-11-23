@@ -1,4 +1,3 @@
-
 async function getInitialExtraction(conversationText) {
     const today = new Date().toLocaleDateString('es-MX', {
         weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
