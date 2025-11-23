@@ -1,7 +1,20 @@
 // server/services/aiValidationService.js
 require('dotenv').config();
 const OpenAI = require('openai');
-const openai = new OpenAI(); // La API key se toma de process.env.OPENAI_API_KEY
+
+let openai;
+
+function getOpenAIClient() {
+    if (!openai) {
+        if (!process.env.OPENAI_API_KEY) {
+            throw new Error("OPENAI_API_KEY no está configurada en las variables de entorno.");
+        }
+        openai = new OpenAI({
+            apiKey: process.env.OPENAI_API_KEY,
+        });
+    }
+    return openai;
+}
 
 async function validateAndSuggest(folioData) {
     console.log("🤖 Iniciando validación y sugerencias con IA...");
@@ -25,8 +38,8 @@ async function validateAndSuggest(folioData) {
     try {
         if (typeof relevantData.cakeFlavor === 'string') relevantData.cakeFlavor = JSON.parse(relevantData.cakeFlavor || '[]');
         if (typeof relevantData.filling === 'string') relevantData.filling = JSON.parse(relevantData.filling || '[]');
-         if (typeof relevantData.tiers === 'string') relevantData.tiers = JSON.parse(relevantData.tiers || '[]');
-         if (typeof relevantData.additional === 'string') relevantData.additional = JSON.parse(relevantData.additional || '[]');
+        if (typeof relevantData.tiers === 'string') relevantData.tiers = JSON.parse(relevantData.tiers || '[]');
+        if (typeof relevantData.additional === 'string') relevantData.additional = JSON.parse(relevantData.additional || '[]');
     } catch (e) {
         console.warn("Error parseando datos JSON para validación IA:", e.message);
         // Continúa con los datos que se pudieron parsear
@@ -52,7 +65,8 @@ async function validateAndSuggest(folioData) {
     `;
 
     try {
-        const response = await openai.chat.completions.create({
+        const client = getOpenAIClient();
+        const response = await client.chat.completions.create({
             model: "gpt-4o", // O el modelo que prefieras
             messages: [{ role: "system", content: prompt }],
             response_format: { type: "json_object" },

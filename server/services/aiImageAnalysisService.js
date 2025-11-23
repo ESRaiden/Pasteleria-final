@@ -1,7 +1,20 @@
 // server/services/aiImageAnalysisService.js
 require('dotenv').config();
 const OpenAI = require('openai');
-const openai = new OpenAI();
+
+let openai;
+
+function getOpenAIClient() {
+    if (!openai) {
+        if (!process.env.OPENAI_API_KEY) {
+            throw new Error("OPENAI_API_KEY no está configurada en las variables de entorno.");
+        }
+        openai = new OpenAI({
+            apiKey: process.env.OPENAI_API_KEY,
+        });
+    }
+    return openai;
+}
 
 async function analyzeInspirationImage(imageBase64) {
     console.log("🤖 Iniciando análisis de imagen con IA Visual...");
@@ -27,7 +40,8 @@ async function analyzeInspirationImage(imageBase64) {
     `;
 
     try {
-        const response = await openai.chat.completions.create({
+        const client = getOpenAIClient();
+        const response = await client.chat.completions.create({
             model: "gpt-4o", // Modelo con capacidad de visión
             messages: [
                 {
@@ -54,8 +68,8 @@ async function analyzeInspirationImage(imageBase64) {
         console.log("🤖 Respuesta de Análisis Visual IA:", resultJsonString);
         const result = JSON.parse(resultJsonString);
 
-         // Validar estructura básica
-         if (!result || typeof result.description !== 'string' || !Array.isArray(result.techniques) || typeof result.complexity !== 'string') {
+        // Validar estructura básica
+        if (!result || typeof result.description !== 'string' || !Array.isArray(result.techniques) || typeof result.complexity !== 'string') {
             throw new Error("La respuesta de la IA (Visión) no tiene el formato esperado.");
         }
 
