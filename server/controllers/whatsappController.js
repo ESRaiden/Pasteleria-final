@@ -1,4 +1,6 @@
 const axios = require('axios');
+const { getInitialExtraction } = require('../services/aiExtractorService');
+const { AISession } = require('../models'); // Asegúrate de importar el modelo
 
 // El comando que el empleado usará en WhatsApp para activar la IA
 const TRIGGER_COMMAND = 'generar folio de su pedido';
@@ -11,11 +13,14 @@ exports.handleWebhook = async (req, res) => {
   try {
     const messageData = req.body.data || req.body; // Adaptable a diferentes estructuras de webhook
 
+    console.log("📩 Webhook de WhatsApp recibido. Payload:", JSON.stringify(messageData, null, 2));
+
     // Validar que exista el cuerpo del mensaje
     const bodyText = messageData.body || (messageData.message && messageData.message.body);
+    console.log("📝 Texto detectado en el mensaje:", bodyText);
 
     if (!bodyText || !bodyText.trim().toLowerCase().includes(TRIGGER_COMMAND)) {
-      console.log("Webhook recibido, pero no es un comando de activación. Ignorando.");
+      console.log(`⚠️ Comando de activación no encontrado. Esperado: '${TRIGGER_COMMAND}', Recibido: '${bodyText}'`);
       return res.status(200).send('EVENT_RECEIVED_BUT_IGNORED');
     }
 
