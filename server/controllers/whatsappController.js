@@ -1,6 +1,8 @@
 const axios = require('axios');
 const { getInitialExtraction } = require('../services/aiExtractorService');
 const { AISession } = require('../models'); // Asegúrate de importar el modelo
+const fs = require('fs');
+const path = require('path');
 
 // El comando que el empleado usará en WhatsApp para activar la IA
 const TRIGGER_COMMAND = 'generar folio';
@@ -73,14 +75,29 @@ exports.handleWebhook = async (req, res) => {
     const extractedData = await getInitialExtraction(conversationText);
     console.log("🤖 Datos extraídos por la IA:", JSON.stringify(extractedData, null, 2));
 
-    // 3. Validamos los datos mínimos (la IA debería proporcionarlos).
-    // if (!extractedData.clientName || !extractedData.deliveryDate || !extractedData.persons) {
-    //   throw new Error("La IA no pudo extraer los datos mínimos requeridos (nombre, fecha o personas).");
-    // }
-
-    // NOTA: La lógica para descargar imágenes se añadirá aquí en el futuro.
-    // Por ahora, simulamos que no se encontraron imágenes.
+    // 3. Procesar imagen si viene en el payload
     const imageUrls = [];
+    if (messageData.media) {
+      try {
+        const media = messageData.media;
+        const buffer = Buffer.from(media.data, 'base64');
+        const fileName = `whatsapp-${Date.now()}.${media.mimetype.split('/')[1]}`;
+        const uploadDir = path.join(__dirname, '../../public/uploads');
+
+        // Asegurar que existe el directorio
+        if (!fs.existsSync(uploadDir)) {
+          fs.mkdirSync(uploadDir, { recursive: true });
+        }
+
+        const filePath = path.join(uploadDir, fileName);
+        await fs.promises.writeFile(filePath, buffer);
+
+        imageUrls.push(`uploads/${fileName}`);
+        console.log(`📸 Imagen guardada en: ${filePath}`);
+      } catch (imgError) {
+        console.error("❌ Error guardando imagen:", imgError.message);
+      }
+    }
 
     // 4. Creamos la nueva sesión de chat en la base de datos.
     const newSession = await AISession.create({

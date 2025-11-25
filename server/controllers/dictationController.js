@@ -25,14 +25,14 @@ exports.processDictation = async (req, res) => {
         return res.status(400).json({ message: 'No se recibió ningún archivo de audio.' });
     }
 
+    let tempFilePath = null;
+
     try {
         // === 1. Transcribir Audio con Whisper ===
         console.log("Transcribiendo audio con Whisper...");
 
         // Crear un archivo temporal para enviar a Whisper
-        // NOTA: OpenAI SDK v4+ ahora puede aceptar Buffers directamente o streams,
-        // pero crear un archivo temporal es a veces más robusto.
-        const tempFilePath = path.join(os.tmpdir(), `dictation-${Date.now()}.webm`);
+        tempFilePath = path.join(os.tmpdir(), `dictation-${Date.now()}.webm`);
         await fs.promises.writeFile(tempFilePath, req.file.buffer);
 
         const client = getOpenAIClient();
@@ -44,7 +44,9 @@ exports.processDictation = async (req, res) => {
 
         // Eliminar archivo temporal después de usarlo
         try {
-            await fs.promises.unlink(tempFilePath);
+            if (tempFilePath && fs.existsSync(tempFilePath)) {
+                await fs.promises.unlink(tempFilePath);
+            }
         } catch (unlinkErr) {
             console.warn("No se pudo eliminar el archivo de audio temporal:", unlinkErr.message);
         }
@@ -68,7 +70,7 @@ exports.processDictation = async (req, res) => {
     } catch (error) {
         console.error("❌ Error procesando el dictado:", error);
         // Intentar eliminar el archivo temporal también en caso de error
-        if (fs.existsSync(tempFilePath)) {
+        if (tempFilePath && fs.existsSync(tempFilePath)) {
             try { await fs.promises.unlink(tempFilePath); } catch (e) { }
         }
         res.status(500).json({

@@ -4,9 +4,9 @@ const axios = require('axios');
 
 // --- CONFIGURACIÓN ---
 const WEBHOOK_URL = 'https://prueba-pasteleria.fly.dev/api/webhooks/whatsapp';
-const TRIGGER_COMMAND = 'generar folio de su pedido'; // Para filtrar y no enviar TODO si no quieres
+const TRIGGER_COMMAND = 'generar folio'; // Comando simplificado
 
-console.log('🚀 Iniciando Mini-Gateway de WhatsApp...');
+console.log('🚀 Iniciando Mini-Gateway de WhatsApp (Modo Pro)...');
 
 const client = new Client({
     authStrategy: new LocalAuth(),
@@ -23,51 +23,81 @@ client.on('qr', (qr) => {
 
 client.on('ready', () => {
     console.log('✅ Cliente de WhatsApp conectado y listo!');
-    console.log(`📡 Reenviando mensajes a: ${WEBHOOK_URL}`);
+    console.log(`📡 Escuchando mensajes (Tuyos y del Cliente) para enviar a: ${WEBHOOK_URL}`);
 });
 
-client.on('message', async (msg) => {
-    // Solo procesamos mensajes de texto por ahora
-    if (msg.type !== 'chat') return;
+// Usamos 'message_create' para detectar mensajes tanto del CLIENTE como del EMPLEADO (tú)
+client.on('message_create', async (msg) => {
+    // Procesamos mensajes de texto e IMÁGENES
+    if (msg.type !== 'chat' && msg.type !== 'image') return;
 
-    // Opcional: Filtrar para solo enviar si contiene el comando (ahorra peticiones)
-    // Si quieres enviar TODO para que la IA decida, comenta estas líneas.
-    // if (!msg.body.toLowerCase().includes(TRIGGER_COMMAND)) {
-    //     return; 
-    // }
+    // Detectar si es el comando de activación (puede venir del cliente O del empleado)
+    const isTrigger = msg.body.toLowerCase().includes(TRIGGER_COMMAND);
 
-    console.log(`📩 Mensaje recibido de ${msg.from}: ${msg.body.substring(0, 50)}...`);
+    // Si NO es el comando, lo ignoramos para no saturar el servidor
+    if (!isTrigger) {
+        return;
+    }
+
+    console.log(`🔔 Comando '${TRIGGER_COMMAND}' detectado en chat con ${msg.from}`);
+    console.log(`   Enviado por: ${msg.fromMe ? 'Mí (Empleado)' : 'Cliente'}`);
 
     try {
-        // Obtenemos el chat para sacar el historial si es necesario
+        // 1. Obtenemos el chat para sacar el historial
         const chat = await msg.getChat();
 
-        // Preparamos el payload compatible con lo que espera tu servidor
-        // Nota: Adaptamos la estructura para que coincida con lo que espera whatsappController.js
+        // 2. Simulamos que estamos "escribiendo" para dar feedback visual (opcional)
+        // await chat.sendStateTyping(); 
+
+        // 3. Recuperamos los últimos 20 mensajes para dar contexto a la IA
+        console.log('📜 Recuperando historial de conversación...');
+        const messages = await chat.fetchMessages({ limit: 20 });
+
+        const history = messages.map(m => {
+            const sender = m.fromMe ? 'Empleado' : 'Cliente';
+            // Limpiamos un poco el texto (saltos de línea)
+            const cleanBody = m.body.replace(/\n/g, ' ');
+            return `${sender}: ${cleanBody}`;
+        }).join('\n');
+
+        console.log(`   -> ${history.length} caracteres de historial obtenidos.`);
+
+        // 4. Si es imagen, descargamos el medio
+        let mediaData = null;
+        if (msg.hasMedia) {
+            try {
+                const media = await msg.downloadMedia();
+                if (media) {
+                    mediaData = {
+                        mimetype: media.mimetype,
+                        data: media.data, // Base64
+                        filename: media.filename || `image-${Date.now()}.jpg`
+                    };
+                    console.log('📸 Imagen descargada correctamente.');
+                }
+            } catch (mediaError) {
+                console.error('❌ Error descargando imagen:', mediaError.message);
+            }
+        }
+
+        // 5. Preparamos el payload con el historial COMPLETO y la imagen (si hay)
         const payload = {
             data: {
-                body: msg.body,
+                body: msg.body || (mediaData ? '[Imagen adjunta]' : ''),
                 from: msg.from,
-                conversation: `Cliente: ${msg.body}`, // Simplificado, idealmente enviaríamos historial
+                conversation: history,
                 contactId: msg.from,
-                key: { remoteJid: msg.from }
+                key: { remoteJid: msg.from },
+                media: mediaData // <--- Enviamos la imagen en Base64
             }
         };
 
-        // Si quieres enviar historial real (últimos 10 mensajes)
-        // Descomenta esto para hacerlo más pro:
-        /*
-        const messages = await chat.fetchMessages({ limit: 10 });
-        const history = messages.map(m => {
-            const sender = m.fromMe ? 'Empleado' : 'Cliente';
-            return `${sender}: ${m.body}`;
-        }).join('\n');
-        payload.data.conversation = history;
-        */
-
-        console.log('📤 Enviando a Fly.io...');
+        console.log('📤 Enviando datos completos a Fly.io...');
         await axios.post(WEBHOOK_URL, payload);
-        console.log('✅ Enviado con éxito.');
+        console.log('✅ Enviado con éxito. La IA debería responder pronto.');
+
+        // Dejamos de "escribir"
+        // await chat.clearState();
 
     } catch (error) {
         console.error('❌ Error al reenviar webhook:', error.message);
