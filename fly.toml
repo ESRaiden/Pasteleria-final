@@ -1,9 +1,9 @@
-# fly.toml app configuration file generated for prueba-pasteleria on 2025-11-23T04:02:08Z
+# fly.toml app configuration file generated for pasteleria-final on 2025-11-30T05:55:10Z
 #
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
 
-app = 'prueba-pasteleria'
+app = 'pasteleria-final'
 primary_region = 'dfw'
 
 [build]
