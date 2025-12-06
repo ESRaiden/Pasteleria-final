@@ -330,7 +330,8 @@
                                             - additionalCost;
                                             %>
                                             <div class="account-item"><span class="data-label">Pastel(es):</span>
-                                                <span>$<%= mainCakeCost.toFixed(2) %></span></div>
+                                                <span>$<%= mainCakeCost.toFixed(2) %></span>
+                                            </div>
                                             <% if (additionalCost> 0) { %><div class="account-item"><span
                                                         class="data-label">Adicionales:</span> <span>$<%=
                                                             additionalCost.toFixed(2) %></span></div>
@@ -486,7 +487,7 @@
             <% folio.imageUrls.forEach(function(imageUrl, index) { %>
                 <div class="image-container">
                     <!-- CORRECCIÓN: Asegurar ruta relativa correcta si es necesario -->
-                    <img src="/<%= imageUrl.replace(/\\/g, ' /') %>">
+                    <img src="<%= imageUrl %>">
                                             <% if (folio.imageComments && folio.imageComments[index]) { %>
                                                 <p class="image-comment">
                                                     <%= folio.imageComments[index] %>

@@ -4,41 +4,45 @@ const path = require('path');
 
 // --- FUNCIÓN EXISTENTE PARA PDF INDIVIDUAL (SIN CAMBIOS) ---
 exports.createPdf = async (folioData) => {
-  try {
-    const templatePath = path.join(__dirname, '../templates/folioTemplate.ejs');
-    const html = await ejs.renderFile(templatePath, { folio: folioData });
+    try {
+        console.log('📄 [PDF SERVICE] Generando PDF para folio:', folioData.folioNumber);
+        if (folioData.imageUrls) {
+            console.log('   🖼️ Imágenes recibidas en servicio PDF:', folioData.imageUrls);
+        }
+        const templatePath = path.join(__dirname, '../templates/folioTemplate.ejs');
+        const html = await ejs.renderFile(templatePath, { folio: folioData });
 
-    // 1. Creamos el texto del pie de página dinámicamente
-    const footerText = `Pedido capturado por: ${folioData.responsibleUser.username} el ${new Date(folioData.createdAt).toLocaleString('es-MX')}`;
+        // 1. Creamos el texto del pie de página dinámicamente
+        const footerText = `Pedido capturado por: ${folioData.responsibleUser.username} el ${new Date(folioData.createdAt).toLocaleString('es-MX')}`;
 
-    // 2. Modificamos las opciones del PDF
-    const options = {
-        format: 'Letter',
-        printBackground: true,
-        displayHeaderFooter: true, // <-- Habilita el pie de página
-        margin: {
-            top: '25px',
-            right: '25px',
-            bottom: '40px', // <-- Espacio para el pie de página
-            left: '25px'
-        },
-        // 3. Añadimos la plantilla del pie de página
-        footerTemplate: `
+        // 2. Modificamos las opciones del PDF
+        const options = {
+            format: 'Letter',
+            printBackground: true,
+            displayHeaderFooter: true, // <-- Habilita el pie de página
+            margin: {
+                top: '25px',
+                right: '25px',
+                bottom: '40px', // <-- Espacio para el pie de página
+                left: '25px'
+            },
+            // 3. Añadimos la plantilla del pie de página
+            footerTemplate: `
           <div style="width: 100%; font-size: 9pt; text-align: center; padding: 10px 25px 0 25px; border-top: 1px solid #f0f0f0; box-sizing: border-box;">
             ${footerText}
           </div>
         `
-    };
+        };
 
-    const file = { content: html };
-    const pdfBuffer = await pdf.generatePdf(file, options);
-    console.log('✅ PDF de folio individual generado con pie de página.');
-    return pdfBuffer;
+        const file = { content: html };
+        const pdfBuffer = await pdf.generatePdf(file, options);
+        console.log('✅ PDF de folio individual generado con pie de página.');
+        return pdfBuffer;
 
-  } catch (error) {
-    console.error('❌ Error durante la creación del PDF individual:', error);
-    throw error;
-  }
+    } catch (error) {
+        console.error('❌ Error durante la creación del PDF individual:', error);
+        throw error;
+    }
 };
 
 /**
