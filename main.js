@@ -2984,3 +2984,5 @@ document.addEventListener('DOMContentLoaded', function () {
     // --- Fin Event Listener ---
 
 }); // Fin de DOMContentLoaded
+
+// --- Fin de main.js ---
