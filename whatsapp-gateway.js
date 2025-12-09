@@ -9,7 +9,10 @@ const TRIGGER_COMMAND = 'generar folio'; // Comando simplificado
 console.log('🚀 Iniciando Mini-Gateway de WhatsApp (Modo Pro)...');
 
 const client = new Client({
-    authStrategy: new LocalAuth(),
+    // 1. ASIGNAMOS UN ID ÚNICO PARA QUE LA CARPETA DE SESIÓN NO SE MEZCLE
+    authStrategy: new LocalAuth({ 
+        clientId: "bot-pasteleria" 
+    }),
     puppeteer: {
         // --- CAMBIO IMPORTANTE ---
         // 'false' hace que se abra la ventana visible de Google Chrome
