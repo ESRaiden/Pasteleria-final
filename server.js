@@ -18,6 +18,8 @@ const whatsappRoutes = require('./server/routes/whatsappRoutes'); // <-- RUTA NU
 const aiSessionRoutes = require('./server/routes/aiSessionRoutes');
 const testRoutes = require('./server/routes/testRoutes');
 const dictationRoutes = require('./server/routes/dictationRoutes');
+const ingredientRoutes = require('./server/routes/ingredientRoutes');
+const ingredientController = require('./server/controllers/ingredientController');
 
 // --- TAREAS PROGRAMADAS ---
 // Esta línea importa e inicia las tareas programadas (como el envío de correos)
@@ -32,9 +34,9 @@ conectarDB();
 
 // --- MIDDLEWARES ---
 app.use(cors({
-    origin: '*',
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+  origin: '*',
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 app.use(express.json());
 
@@ -49,7 +51,7 @@ app.get('/', (req, res) => {
   res.json({ message: '¡API de la Pastelería La Fiesta funcionando!' });
 });
 
-app.use('/api/auth', authRoutes); 
+app.use('/api/auth', authRoutes);
 app.use('/api/folios', folioRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/clients', clientRoutes);
@@ -58,9 +60,12 @@ app.use('/api/ai-sessions', aiSessionRoutes);
 app.use('/api/test', testRoutes);
 app.use('/api/dictation', dictationRoutes);
 
+app.use('/api/ingredients', ingredientRoutes);
+
 // --- INICIO DEL SERVIDOR ---
-sequelize.sync({ force: false }).then(() => {
+sequelize.sync({ force: false }).then(async () => {
   console.log('🔄 Modelos sincronizados con la base de datos.');
+  await ingredientController.seedIngredients();
   app.listen(PORT, () => {
     console.log(`🚀 Servidor corriendo en http://localhost:${PORT}`);
   });

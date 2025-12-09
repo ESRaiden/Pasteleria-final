@@ -5,6 +5,9 @@ const Folio = require('./Folio');
 const FolioEditHistory = require('./FolioEditHistory');
 const Commission = require('./Commission');
 const AISession = require('./AISession'); // Modelo nuevo para las sesiones de chat
+const Flavor = require('./Flavor');
+const Filling = require('./Filling');
+
 
 // --- Relaciones Principales ---
 User.hasMany(Folio, { foreignKey: 'responsibleUserId' });
@@ -32,5 +35,8 @@ module.exports = {
   Folio,
   FolioEditHistory,
   Commission,
-  AISession
+  AISession,
+  Flavor,
+  Filling
+
 };

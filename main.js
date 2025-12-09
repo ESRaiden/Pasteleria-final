@@ -92,6 +92,19 @@ document.addEventListener('DOMContentLoaded', function () {
         modalStep2List = document.getElementById('modal-step-2-list'),
         tiersTableBody = document.getElementById('tiersTableBody'),
         addTierButton = document.getElementById('addTierButton'),
+
+        // --- NUEVO: Elementos de Gestión de Ingredientes ---
+        manageIngredientsButton = document.getElementById('manageIngredientsButton'),
+        ingredientManagementModal = document.getElementById('ingredientManagementModal'),
+        closeIngredientModalBtn = document.getElementById('closeIngredientModal'),
+        tabFlavors = document.getElementById('tabFlavors'),
+        tabFillings = document.getElementById('tabFillings'),
+        flavorsTabContent = document.getElementById('flavorsTabContent'),
+        fillingsTabContent = document.getElementById('fillingsTabContent'),
+        flavorsTableBody = document.getElementById('flavorsTableBody'),
+        fillingsTableBody = document.getElementById('fillingsTableBody'),
+        addNewFlavorBtn = document.getElementById('addNewFlavorBtn'),
+        addNewFillingBtn = document.getElementById('addNewFillingBtn'),
         additionalList = document.getElementById('additionalList'),
         addAdditionalButton = document.getElementById('addAdditionalButton'),
         normalFields = document.getElementById('normalFields'),
@@ -359,15 +372,18 @@ document.addEventListener('DOMContentLoaded', function () {
 
         if (role === 'Administrador') {
             manageUsersButton.classList.remove('hidden');
+            if (manageIngredientsButton) manageIngredientsButton.classList.remove('hidden'); // Mostrar botón gestión
             viewStatsButton.classList.remove('hidden');
             commissionReportButton.classList.remove('hidden');
         } else {
             manageUsersButton.classList.add('hidden');
+            if (manageIngredientsButton) manageIngredientsButton.classList.add('hidden');
             viewStatsButton.classList.add('hidden');
             commissionReportButton.classList.add('hidden');
         }
 
         loadActiveSessions();
+        loadIngredients(); // Cargar ingredientes al iniciar
 
         if (window.initializeCalendar) {
             window.initializeCalendar(token, role);
@@ -1534,47 +1550,220 @@ document.addEventListener('DOMContentLoaded', function () {
     let tiersData = []; // Para almacenar estado de panes/rellenos por piso
     let currentTierIndex = -1; // Para saber qué fila de piso se está editando
 
-    // Datos quemados para los modales (puedes cargarlos desde API si prefieres)
-    const cakeFlavorsData = {
-        normal: ['Vainilla', 'Chocolate', 'Red Velvet', 'Mantequilla', 'Nata', 'Queso', '3 Leches', 'Pastel de queso', 'Queso/Flan', 'Zanahoria', 'Mil Hojas', 'Flan'],
-        tier: ['Vainilla', 'Chocolate', 'Red Velvet', 'Mantequilla', 'Nata', 'Queso', 'Flan'] // Sabores para pisos especiales
-    };
-    const rellenosData = {
-        incluidos: { // Sin costo adicional
-            'Manjar': { suboptions: ['Nuez', 'Coco', 'Almendra', 'Cajeta'] },
-            'Cajeta': { suboptions: ['Nuez', 'Coco', 'Oreo'] },
-            'Chantilly': { suboptions: ['Duraznos', 'Fresas', 'Piña'] },
-            'Mermelada': { suboptions: ['Fresa', 'Zarzamora', 'Piña', 'Chabacano'] },
-            'Crema de Queso': { suboptions: ['Cajeta', 'Envinada'] }
-        },
-        conCosto: { // Con costo adicional ($30 por cada 20 personas)
-            'Nutella': { suboptions: ['Nuez', 'Almendra'] },
-            'Dulce de Leche': { suboptions: ['Nuez', 'Almendra', 'Envinada'] },
-            'Nuez': { suboptions: ['Capuchino', 'Mocka', 'Chocolate'] },
-            'Cremas': { suboptions: ['Yogurth de fresa', 'Café con o sin brandy'] },
-            'Duraznos': { suboptions: ['Rompope', 'Crema de Yogurth', 'Chantilly'] }
+
+    // --- NUEVO: Gestión Dinámica de Ingredientes ---
+    let cakeFlavorsData = { normal: [], tier: [] };
+    let rellenosData = { incluidos: {}, conCosto: {} };
+    let rellenosDataEspecial = { principales: [], secundarios: [] };
+
+    // Variables globales para acceso raw
+    window.allFlavors = [];
+    window.allFillings = [];
+
+    async function loadIngredients() {
+        try {
+            const authToken = localStorage.getItem('authToken');
+
+            // Cargar Sabores
+            const flavorsRes = await fetch('/api/ingredients/flavors');
+            const flavorsList = await flavorsRes.json();
+            window.allFlavors = flavorsList;
+
+            // Reconstruir cakeFlavorsData
+            cakeFlavorsData = { normal: [], tier: [] };
+            flavorsList.forEach(f => {
+                if (f.isNormal) cakeFlavorsData.normal.push(f.name);
+                if (f.isTier) cakeFlavorsData.tier.push(f.name);
+            });
+
+            // Cargar Rellenos
+            const fillingsRes = await fetch('/api/ingredients/fillings');
+            const fillingsList = await fillingsRes.json();
+            window.allFillings = fillingsList;
+
+            // Reconstruir rellenosData
+            rellenosData = { incluidos: {}, conCosto: {} };
+            rellenosDataEspecial = { principales: [], secundarios: [] };
+
+            fillingsList.forEach(f => {
+                // Parse options if string (should be handled by backend mostly but safety first)
+                let subs = f.suboptions;
+                if (typeof subs === 'string') {
+                    try { subs = JSON.parse(subs); } catch (e) { subs = subs.split(',').map(s => s.trim()); }
+                }
+
+                // Populate main dictionaries
+                const entry = { suboptions: subs || [] };
+                if (f.isPaid) {
+                    rellenosData.conCosto[f.name] = entry;
+                } else {
+                    rellenosData.incluidos[f.name] = entry;
+                }
+
+                // Populate Especial Lists (Logic can be refined)
+                // For now add everything to principales
+                rellenosDataEspecial.principales.push({ name: f.name, suboptions: subs || [] });
+
+                // For secundarios, flatten options? Or just names?
+                // Original 'secundarios' had 'Mermelada de Fresa'. 
+                // We'll add the main name, AND 'Name de Suboption' combos
+                rellenosDataEspecial.secundarios.push(f.name);
+                if (subs && subs.length > 0) {
+                    subs.forEach(s => rellenosDataEspecial.secundarios.push(`${f.name} de ${s}`));
+                }
+            });
+
+            // Actualizar UI de gestión si está abierta
+            if (!ingredientManagementModal.classList.contains('hidden')) {
+                renderIngredientManagementLists();
+            }
+
+            console.log("Ingredientes cargados y estructuras actualizadas.");
+
+        } catch (error) {
+            console.error("Error loading ingredients:", error);
         }
-    };
-    // Rellenos para Base/Especial (estructura diferente)
-    const rellenosDataEspecial = {
-        principales: [
-            { name: 'Manjar', suboptions: ['Nuez', 'Coco', 'Almendra', 'Cajeta'] },
-            { name: 'Cajeta', suboptions: ['Nuez', 'Coco', 'Oreo'] },
-            { name: 'Chantilly', suboptions: ['Duraznos', 'Fresas', 'Piña'] },
-            { name: 'Mermelada', suboptions: ['Fresa', 'Zarzamora', 'Piña', 'Chabacano'] },
-            { name: 'Crema de Queso', suboptions: ['Cajeta', 'Envinada'] },
-            { name: 'Nutella', suboptions: ['Nuez', 'Almendra'] },
-            { name: 'Dulce de Leche', suboptions: ['Nuez', 'Almendra', 'Envinada'] },
-            { name: 'Nuez', suboptions: ['Capuchino', 'Mocka', 'Chocolate'] },
-            { name: 'Cremas', suboptions: ['Yogurth de fresa', 'Café con o sin brandy'] },
-            { name: 'Duraznos', suboptions: ['Rompope', 'Crema de Yogurth', 'Chantilly'] }
-        ],
-        secundarios: [
-            'Manjar', 'Cajeta', 'Chantilly', 'Mermelada de Fresa', 'Mermelada de Zarzamora',
-            'Mermelada de Piña', 'Mermelada de Chabacano', 'Crema de Queso', 'Nutella',
-            'Dulce de Leche', 'Nuez', 'Crema de Yogurth de fresa', 'Crema de Café', 'Duraznos', 'Rompope'
-        ]
-    };
+    }
+
+    // --- Lógica del Modal de Gestión ---
+    function renderIngredientManagementLists() {
+        // Render Sabores
+        flavorsTableBody.innerHTML = '';
+        window.allFlavors.forEach(f => {
+            const row = document.createElement('tr');
+            row.className = 'border-b hover:bg-gray-50';
+            row.innerHTML = `
+                <td class="px-4 py-2">${f.name}</td>
+                <td class="px-4 py-2 text-center text-2xl">${f.isNormal ? '✅' : '❌'}</td>
+                <td class="px-4 py-2 text-center text-2xl">${f.isTier ? '✅' : '❌'}</td>
+                <td class="px-4 py-2 text-right">
+                    <button class="text-red-500 hover:text-red-700 font-bold delete-flavor-btn" data-id="${f.id}">Eliminar</button>
+                </td>
+            `;
+            flavorsTableBody.appendChild(row);
+        });
+
+        // Render Rellenos
+        fillingsTableBody.innerHTML = '';
+        window.allFillings.forEach(f => {
+            let subs = f.suboptions;
+            if (typeof subs === 'string') {
+                try { subs = JSON.parse(subs); } catch (e) { subs = subs.split(','); }
+            }
+            const subText = Array.isArray(subs) ? subs.join(', ') : '';
+
+            const row = document.createElement('tr');
+            row.className = 'border-b hover:bg-gray-50';
+            row.innerHTML = `
+                <td class="px-4 py-2">${f.name}</td>
+                <td class="px-4 py-2 text-center text-2xl">${f.isPaid ? '💲' : '🆓'}</td>
+                <td class="px-4 py-2 text-xs text-gray-600">${subText}</td>
+                <td class="px-4 py-2 text-right">
+                    <button class="text-red-500 hover:text-red-700 font-bold delete-filling-btn" data-id="${f.id}">Eliminar</button>
+                </td>
+            `;
+            fillingsTableBody.appendChild(row);
+        });
+    }
+
+    if (manageIngredientsButton) {
+        manageIngredientsButton.addEventListener('click', () => {
+            ingredientManagementModal.classList.remove('hidden');
+            renderIngredientManagementLists();
+        });
+    }
+
+    if (closeIngredientModalBtn) {
+        closeIngredientModalBtn.addEventListener('click', () => {
+            ingredientManagementModal.classList.add('hidden');
+        });
+    }
+
+    // Tabs
+    if (tabFlavors && tabFillings) {
+        tabFlavors.addEventListener('click', () => {
+            tabFlavors.classList.add('active-tab', 'border-red-500', 'text-red-600');
+            tabFlavors.classList.remove('border-transparent', 'hover:text-gray-600', 'hover:border-gray-300');
+            tabFillings.classList.remove('active-tab', 'border-red-500', 'text-red-600');
+            tabFillings.classList.add('border-transparent', 'hover:text-gray-600', 'hover:border-gray-300');
+            flavorsTabContent.classList.remove('hidden');
+            fillingsTabContent.classList.add('hidden');
+        });
+
+        tabFillings.addEventListener('click', () => {
+            tabFillings.classList.add('active-tab', 'border-red-500', 'text-red-600');
+            tabFillings.classList.remove('border-transparent', 'hover:text-gray-600', 'hover:border-gray-300');
+            tabFlavors.classList.remove('active-tab', 'border-red-500', 'text-red-600');
+            tabFlavors.classList.add('border-transparent', 'hover:text-gray-600', 'hover:border-gray-300');
+            fillingsTabContent.classList.remove('hidden');
+            flavorsTabContent.classList.add('hidden');
+        });
+    }
+
+    // Add Flavor
+    if (addNewFlavorBtn) {
+        addNewFlavorBtn.addEventListener('click', async () => {
+            const name = document.getElementById('newFlavorName').value.trim();
+            const isNormal = document.getElementById('newFlavorIsNormal').checked;
+            const isTier = document.getElementById('newFlavorIsTier').checked;
+            if (!name) return alert('Ingresa un nombre');
+
+            try {
+                const authToken = localStorage.getItem('authToken');
+                const res = await fetch('/api/ingredients/flavors', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+                    body: JSON.stringify({ name, isNormal, isTier })
+                });
+                if (res.ok) {
+                    document.getElementById('newFlavorName').value = '';
+                    await loadIngredients();
+                } else alert('Error al agregar');
+            } catch (e) { console.error(e); alert('Error'); }
+        });
+    }
+
+    // Add Filling
+    if (addNewFillingBtn) {
+        addNewFillingBtn.addEventListener('click', async () => {
+            const name = document.getElementById('newFillingName').value.trim();
+            const isPaid = document.getElementById('newFillingIsPaid').checked;
+            const subsVal = document.getElementById('newFillingSuboptions').value.trim();
+            if (!name) return alert('Ingresa un nombre');
+
+            try {
+                const authToken = localStorage.getItem('authToken');
+                const res = await fetch('/api/ingredients/fillings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+                    body: JSON.stringify({ name, isPaid, suboptions: subsVal })
+                });
+                if (res.ok) {
+                    document.getElementById('newFillingName').value = '';
+                    document.getElementById('newFillingSuboptions').value = '';
+                    await loadIngredients();
+                } else alert('Error al agregar');
+            } catch (e) { console.error(e); alert('Error'); }
+        });
+    }
+
+    // Delegate Delete Buttons
+    ingredientManagementModal.addEventListener('click', async (e) => {
+        const authToken = localStorage.getItem('authToken');
+        if (e.target.classList.contains('delete-flavor-btn')) {
+            if (!confirm('¿Eliminar sabor?')) return;
+            const id = e.target.dataset.id;
+            await fetch(`/api/ingredients/flavors/${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${authToken}` } });
+            await loadIngredients();
+        }
+        if (e.target.classList.contains('delete-filling-btn')) {
+            if (!confirm('¿Eliminar relleno?')) return;
+            const id = e.target.dataset.id;
+            await fetch(`/api/ingredients/fillings/${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${authToken}` } });
+            await loadIngredients();
+        }
+    });
+
 
     folioForm.addEventListener('submit', async (e) => {
         e.preventDefault();
