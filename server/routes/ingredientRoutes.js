@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const ingredientController = require('../controllers/ingredientController');
-const { verifyToken, isAdmin } = require('../utils/authMiddleware'); // Asumiendo que existen
+const verifyToken = require('../middleware/authMiddleware');
+// const authorize = require('../middleware/roleMiddleware'); // Si se requiere restricción de rol
 
 // Rutas públicas para obtener listas (usadas en el formulario)
 router.get('/flavors', ingredientController.getFlavors);
