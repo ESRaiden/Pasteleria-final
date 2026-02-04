@@ -1,58 +1,40 @@
 # syntax = docker/dockerfile:1
-
-# 1. Definir versión de Node
 ARG NODE_VERSION=20.18.0
 FROM node:${NODE_VERSION}-slim AS base
 
 LABEL fly_launch_runtime="Node.js"
-
-# Directorio de trabajo
 WORKDIR /app
-
-# Entorno de producción
 ENV NODE_ENV="production"
 
-# --- ETAPA DE CONSTRUCCIÓN (BUILD) ---
+# --- ETAPA 1: CONSTRUCCIÓN (BUILD) ---
 FROM base AS build
-
-# Instalar herramientas de compilación básicas
 RUN apt-get update -qq && \
     apt-get install --no-install-recommends -y build-essential node-gyp pkg-config python-is-python3
-
-# Instalar dependencias del proyecto
 COPY package-lock.json package.json ./
-# Usamos 'npm ci' para una instalación limpia y exacta
+# Instalamos dependencias
 RUN npm ci
-
-# Copiar el código fuente
 COPY . .
 
-# --- ETAPA FINAL (PRODUCCIÓN) ---
+# --- ETAPA 2: PRODUCCIÓN FINAL ---
 FROM base
 
-# [CRÍTICO] Instalar Google Chrome Stable y Fuentes Requeridas
-# 1. Descargamos las llaves de seguridad de Google.
-# 2. Añadimos el repositorio oficial de Chrome.
-# 3. Instalamos google-chrome-stable y fuentes (para evitar cuadros [] en el PDF).
-RUN apt-get update && apt-get install -y wget gnupg ca-certificates \
-    && wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \
-    && sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list' \
-    && apt-get update \
-    && apt-get install -y google-chrome-stable fonts-ipafont-gothic fonts-wqy-zenhei fonts-thai-tlwg fonts-kacst fonts-freefont-ttf libxss1 \
+# [CRÍTICO] Instalamos las dependencias del sistema que Puppeteer necesita para correr
+# Incluimos fuentes (fonts-*) para evitar que el texto salga con cuadros []
+RUN apt-get update \
+    && apt-get install -y wget gnupg ca-certificates \
+    && apt-get install -y \
+      fonts-ipafont-gothic fonts-wqy-zenhei fonts-thai-tlwg fonts-kacst fonts-freefont-ttf \
+      libxss1 libasound2 libatk-bridge2.0-0 libgtk-3-0 libnss3 libx11-xcb1 libxtst6 xdg-utils \
+      libgbm1 libdrm2 libxcomposite1 libxcursor1 libxi6 libxrandr2 libxrender1 \
       --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
-# Copiar la aplicación compilada desde la etapa anterior
+# Copiamos la aplicación construida
 COPY --from=build /app /app
 
-# Configuración Vital para Puppeteer en la Nube
-# 1. Decimos a Puppeteer que NO descargue su propio Chrome (usaremos el que acabamos de instalar)
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
-# 2. Le decimos dónde está el ejecutable exacto de Chrome
-ENV PUPPETEER_EXECUTABLE_PATH="/usr/bin/google-chrome-stable"
+# Configuración de Puppeteer
+# Cache en una ruta accesible
+ENV PUPPETEER_CACHE_DIR="/app/.cache"
 
-# Exponer el puerto
 EXPOSE 3000
-
-# Iniciar la aplicación
 CMD [ "node", "server.js" ]
