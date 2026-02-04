@@ -1,45 +1,56 @@
 # syntax = docker/dockerfile:1
 
-# Adjust NODE_VERSION as desired
+# 1. BASE: Usamos Node 20
 ARG NODE_VERSION=20.18.0
 FROM node:${NODE_VERSION}-slim AS base
 
 LABEL fly_launch_runtime="Node.js"
 
-# Node.js app lives here
+# Directorio de la app
 WORKDIR /app
 
-# Set production environment
+# Entorno de producción
 ENV NODE_ENV="production"
 
-
-# Throw-away build stage to reduce size of final image
+# 2. BUILD: Etapa temporal para instalar dependencias y compilar
 FROM base AS build
 
-# Install packages needed to build node modules
+# Instalar paquetes necesarios para compilar módulos nativos (si los hay)
 RUN apt-get update -qq && \
     apt-get install --no-install-recommends -y build-essential node-gyp pkg-config python-is-python3
 
-# Install node modules
+# Instalar módulos de node
 COPY package-lock.json package.json ./
+
+# Usamos npm ci para instalación limpia. 
+# Si falla, puedes cambiarlo por 'npm install'
 RUN npm ci
 
-# Copy application code
+# Copiar el código de la aplicación
 COPY . .
 
-
-# Final stage for app image
+# 3. FINAL: Imagen de producción
 FROM base
 
-# Install packages needed for deployment
-RUN apt-get update -qq && \
-    apt-get install --no-install-recommends -y chromium chromium-sandbox && \
-    rm -rf /var/lib/apt/lists /var/cache/apt/archives
+# [CRÍTICO] Instalar Google Chrome Stable y Fuentes
+# Reemplazamos 'chromium' por 'google-chrome-stable' y añadimos fuentes para evitar cuadros [] en el PDF
+RUN apt-get update && apt-get install -y wget gnupg ca-certificates \
+    && wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \
+    && sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list' \
+    && apt-get update \
+    && apt-get install -y google-chrome-stable fonts-ipafont-gothic fonts-wqy-zenhei fonts-thai-tlwg fonts-kacst fonts-freefont-ttf libxss1 \
+      --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy built application
+# Copiar la aplicación construida desde la etapa 'build'
 COPY --from=build /app /app
 
-# Start the server by default, this can be overwritten at runtime
+# [OPCIONAL] Evitar que Puppeteer descargue su propio Chrome (ahorrar espacio y tiempo)
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+
+# [IMPORTANTE] Indicar a Puppeteer dónde está el Chrome real
+ENV PUPPETEER_EXECUTABLE_PATH="/usr/bin/google-chrome-stable"
+
 EXPOSE 3000
-ENV PUPPETEER_EXECUTABLE_PATH="/usr/bin/chromium"
+
 CMD [ "node", "server.js" ]
