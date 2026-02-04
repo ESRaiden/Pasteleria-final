@@ -1,41 +1,73 @@
-const pdf = require('html-pdf-node');
+const puppeteer = require('puppeteer');
 const ejs = require('ejs');
 const path = require('path');
 
-// --- FUNCIÓN EXISTENTE PARA PDF INDIVIDUAL (SIN CAMBIOS) ---
+/**
+ * Función auxiliar para generar PDF usando Puppeteer de forma nativa.
+ * Maneja el ciclo de vida del navegador y optimiza la carga de recursos.
+ */
+async function generatePdfWithPuppeteer(htmlContent, options) {
+    let browser;
+    try {
+        // Lanzamos el navegador con argumentos necesarios para servidores (Docker/Linux)
+        browser = await puppeteer.launch({
+            headless: 'new',
+            args: ['--no-sandbox', '--disable-setuid-sandbox']
+        });
+
+        const page = await browser.newPage();
+        
+        // Asignamos el contenido HTML y esperamos a que la red esté inactiva (para cargar imágenes)
+        await page.setContent(htmlContent, { 
+            waitUntil: 'networkidle0',
+            timeout: 30000 // 30 segundos de timeout máximo
+        });
+
+        // Generamos el buffer del PDF
+        const pdfBuffer = await page.pdf(options);
+        return pdfBuffer;
+
+    } catch (error) {
+        throw error;
+    } finally {
+        if (browser) {
+            await browser.close();
+        }
+    }
+}
+
+// --- FUNCIÓN PARA PDF INDIVIDUAL (CON PIE DE PÁGINA) ---
 exports.createPdf = async (folioData) => {
     try {
         console.log('📄 [PDF SERVICE] Generando PDF para folio:', folioData.folioNumber);
-        if (folioData.imageUrls) {
-            console.log('   🖼️ Imágenes recibidas en servicio PDF:', folioData.imageUrls);
-        }
+        
         const templatePath = path.join(__dirname, '../templates/folioTemplate.ejs');
         const html = await ejs.renderFile(templatePath, { folio: folioData });
 
         // 1. Creamos el texto del pie de página dinámicamente
         const footerText = `Pedido capturado por: ${folioData.responsibleUser.username} el ${new Date(folioData.createdAt).toLocaleString('es-MX', { timeZone: 'America/Mexico_City' })}`;
 
-        // 2. Modificamos las opciones del PDF
+        // 2. Definimos las opciones compatibles con Puppeteer
         const options = {
             format: 'Letter',
             printBackground: true,
-            displayHeaderFooter: true, // <-- Habilita el pie de página
+            displayHeaderFooter: true, // <-- Necesario para mostrar el pie de página
             margin: {
                 top: '25px',
                 right: '25px',
-                bottom: '40px', // <-- Espacio para el pie de página
+                bottom: '40px', // <-- Espacio reservado para el pie de página
                 left: '25px'
             },
-            // 3. Añadimos la plantilla del pie de página
+            // NOTA: Puppeteer requiere estilos explícitos (font-size) dentro del template del footer
             footerTemplate: `
-          <div style="width: 100%; font-size: 9pt; text-align: center; padding: 10px 25px 0 25px; border-top: 1px solid #f0f0f0; box-sizing: border-box;">
-            ${footerText}
-          </div>
-        `
+                <div style="width: 100%; font-size: 9pt; font-family: sans-serif; text-align: center; color: #555; padding-top: 5px; border-top: 1px solid #ddd; margin-left: 25px; margin-right: 25px;">
+                    ${footerText}
+                </div>
+            `,
+            headerTemplate: '<div></div>' // Header vacío pero necesario para que funcione displayHeaderFooter
         };
 
-        const file = { content: html };
-        const pdfBuffer = await pdf.generatePdf(file, options);
+        const pdfBuffer = await generatePdfWithPuppeteer(html, options);
         console.log('✅ PDF de folio individual generado con pie de página.');
         return pdfBuffer;
 
@@ -47,14 +79,12 @@ exports.createPdf = async (folioData) => {
 
 /**
  * Función genérica para crear PDFs masivos (etiquetas y comandas).
- * @param {string} templateName - El nombre del archivo de plantilla EJS (sin la extensión).
- * @param {Array} data - Un array de objetos (folios, comisiones, etc.).
- * @param {string} date - La fecha para el título del reporte (opcional).
  */
 async function generateBulkPdf(templateName, data, date = null) {
     try {
         const templatePath = path.join(__dirname, `../templates/${templateName}.ejs`);
-        const html = await ejs.renderFile(templatePath, { folios: data, date: date, commissions: data }); // Pasamos los datos con diferentes nombres por si acaso
+        // Pasamos los datos como 'folios' y también como 'commissions' para compatibilidad entre plantillas
+        const html = await ejs.renderFile(templatePath, { folios: data, date: date, commissions: data });
 
         const options = {
             format: 'Letter',
@@ -67,8 +97,7 @@ async function generateBulkPdf(templateName, data, date = null) {
             }
         };
 
-        const file = { content: html };
-        const pdfBuffer = await pdf.generatePdf(file, options);
+        const pdfBuffer = await generatePdfWithPuppeteer(html, options);
         console.log(`✅ PDF masivo de ${templateName} generado.`);
         return pdfBuffer;
 
@@ -80,7 +109,6 @@ async function generateBulkPdf(templateName, data, date = null) {
 
 /**
  * Crea un PDF con las etiquetas de producción para un conjunto de folios.
- * @param {Array} folios - Un array de objetos de folio.
  */
 exports.createLabelsPdf = async (folios) => {
     return generateBulkPdf('labelsTemplate', folios);
@@ -88,7 +116,6 @@ exports.createLabelsPdf = async (folios) => {
 
 /**
  * Crea un PDF con las comandas de envío para un conjunto de folios.
- * @param {Array} folios - Un array de objetos de folio.
  */
 exports.createOrdersPdf = async (folios) => {
     return generateBulkPdf('ordersTemplate', folios);
@@ -97,11 +124,11 @@ exports.createOrdersPdf = async (folios) => {
 // ==================== INICIO DE LA MODIFICACIÓN ====================
 /**
  * Crea un PDF con el reporte de comisiones para una fecha específica.
- * @param {Array} commissions - Un array de objetos de comisión con su folio asociado.
- * @param {string} date - La fecha del reporte en formato YYYY-MM-DD.
  */
 exports.createCommissionReportPdf = async (commissions, date) => {
     try {
+        // Reutilizamos la lógica de generateBulkPdf o lo hacemos explícito si requiere opciones diferentes
+        // Aquí lo haré explícito para mantener tu estructura original
         const templatePath = path.join(__dirname, '../templates/commissionReportTemplate.ejs');
         const html = await ejs.renderFile(templatePath, { commissions, date });
 
@@ -111,8 +138,7 @@ exports.createCommissionReportPdf = async (commissions, date) => {
             margin: { top: '25px', right: '25px', bottom: '25px', left: '25px' }
         };
 
-        const file = { content: html };
-        const pdfBuffer = await pdf.generatePdf(file, options);
+        const pdfBuffer = await generatePdfWithPuppeteer(html, options);
         console.log(`✅ PDF de reporte de comisiones generado para la fecha ${date}.`);
         return pdfBuffer;
 
@@ -121,4 +147,4 @@ exports.createCommissionReportPdf = async (commissions, date) => {
         throw error;
     }
 };
-// ===================== FIN DE LA MODIFICACIÓN ====================== 
+// ===================== FIN DE LA MODIFICACIÓN ======================
